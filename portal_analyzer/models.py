@@ -21,6 +21,7 @@ class LanguageType(str, Enum):
     AWL = "AWL"  # Statement List
     SCL = "SCL"  # Structured Control Language
     XML = "XML"  # TIA Portal XML format
+    LD = "LD"  # Ladder Diagram (梯形图)
     GRAPH = "GRAPH"  # Sequential function chart
     UNKNOWN = "UNKNOWN"
 
@@ -64,6 +65,9 @@ class CodeMetrics(BaseModel):
     variables_count: int = Field(default=0)
     comments_ratio: float = Field(default=0.0)
     code_coverage: float = Field(default=0.0)
+    rung_count: int = Field(default=0, description="Number of rungs (for ladder diagrams)")
+    contact_count: int = Field(default=0, description="Number of contacts (for ladder diagrams)")
+    coil_count: int = Field(default=0, description="Number of coils (for ladder diagrams)")
 
 
 class DependencyInfo(BaseModel):
@@ -117,6 +121,15 @@ class AnalysisResult(BaseModel):
             f"Functions: {self.metrics.functions_count}",
             f"Variables: {self.metrics.variables_count}",
         ])
+        
+        # Add ladder diagram specific metrics
+        if self.metadata and self.metadata.language == LanguageType.LD:
+            report_lines.extend([
+                f"\n--- LADDER DIAGRAM METRICS ---",
+                f"Rungs: {self.metrics.rung_count}",
+                f"Contacts: {self.metrics.contact_count}",
+                f"Coils: {self.metrics.coil_count}",
+            ])
         
         if self.recommendations:
             report_lines.append(f"\n--- RECOMMENDATIONS ---")
