@@ -49,6 +49,24 @@ class PortalProgramDetector:
         ],
     }
 
+    # Ladder Diagram patterns
+    LADDER_PATTERNS = [
+        r"NETWORK\s+\d+",  # Network definition
+        r"-\|\|-",  # Contact symbol
+        r"-/\|-",  # Negated contact
+        r"-(\s*)-",  # Coil
+        r"-(/)- ",  # Negated coil
+        r"\(\s*\)",  # Coil in parentheses
+        r"\bLD\b",  # Load operation
+        r"\bAND\b",  # AND operation
+        r"\bOR\b",  # OR operation
+        r"\bXOR\b",  # XOR operation
+        r"\bNOT\b",  # NOT operation
+        r"\bS\b",  # Set coil
+        r"\bR\b",  # Reset coil
+        r"END_NETWORK",  # End of network
+    ]
+
     # XML and AWL/SCL signatures
     SIEMENS_SIGNATURES = {
         "siemens": ["siemens", "automation", "tia", "portal"],
@@ -154,6 +172,12 @@ class PortalProgramDetector:
         if xml_score > 0:
             features.append(f"XML structure detected")
         
+        # Check for Ladder Diagram patterns
+        ld_score = self._check_ladder_patterns(content)
+        confidence_score += ld_score * 0.2
+        if ld_score > 0:
+            features.append(f"Ladder diagram patterns detected")
+        
         # Check for AWL/SCL patterns
         awl_score = self._check_awl_patterns(content)
         confidence_score += awl_score * 0.25
@@ -207,6 +231,8 @@ class PortalProgramDetector:
             ".stl": 0.9,
             ".scl": 0.8,
             ".sce": 0.8,
+            ".ld": 0.9,  # 梯形图
+            ".lad": 0.9,  # Ladder Diagram
             ".graph": 0.7,
             ".s7p": 0.9,
             ".s7pt": 0.9,
@@ -237,11 +263,51 @@ class PortalProgramDetector:
         tia_elements = [
             "Project", "Device", "PlcProgram", "ProgramSection",
             "Network", "Block", "Function", "FunctionBlock",
+            "Contact", "Coil",
         ]
         tia_count = sum(1 for elem in tia_elements if elem in content)
         score += min(0.5, tia_count * 0.1)
         
         return min(1.0, score)
+
+    def _check_ladder_patterns(self, content: str) -> float:
+        """Check for Ladder Diagram patterns.
+        
+        Args:
+            content: File content
+            
+        Returns:
+            Score 0.0-1.0
+        """
+        score = 0.0
+        
+        # Count ladder diagram patterns
+        pattern_count = 0
+        for pattern in self.LADDER_PATTERNS:
+            matches = len(re.findall(pattern, content, re.IGNORECASE | re.MULTILINE))
+            if matches > 0:
+                pattern_count += matches
+        
+        # Calculate score based on pattern matches
+        if pattern_count > 0:
+            score = min(1.0, pattern_count * 0.1)
+        
+        # Check for common ladder keywords
+        ladder_keywords = [
+            r"\bNETWORK\b",
+            r"\bLD\b",
+            r"\bAND\b",
+            r"\bOR\b",
+            r"\bNOT\b",
+            r"\bSET\b",
+            r"\bRESET\b",
+        ]
+        
+        keyword_count = sum(1 for kw in ladder_keywords if re.search(kw, content, re.IGNORECASE))
+        if keyword_count > 0:
+            score = max(score, min(1.0, keyword_count * 0.15))
+        
+        return score
 
     def _check_awl_patterns(self, content: str) -> float:
         """Check for AWL/SCL programming patterns.
@@ -359,6 +425,8 @@ class PortalProgramDetector:
         
         if ext == ".xml":
             return LanguageType.XML
+        elif ext in [".ld", ".lad"]:
+            return LanguageType.LD
         elif ext in [".awl", ".stl"]:
             return LanguageType.AWL
         elif ext in [".scl", ".sce"]:
@@ -369,6 +437,8 @@ class PortalProgramDetector:
             # Analyze content
             if "<?xml" in content:
                 return LanguageType.XML
+            elif self._check_ladder_patterns(content) > 0.5:
+                return LanguageType.LD
             elif re.search(r"\b(LD|ST|AND|OR|NETWORK)\b", content, re.IGNORECASE):
                 return LanguageType.AWL
             elif re.search(r"\b(PROGRAM|FUNCTION|IF|THEN|VAR)\b", content, re.IGNORECASE):
